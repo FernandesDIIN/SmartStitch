@@ -1,0 +1,28 @@
+name: Build Windows
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: python -m pip install numpy pillow natsort "pyside6==6.5.3" pyqtdarktheme "psd-tools>=1.10.13" "pyinstaller==5.13.2"
+      - name: Build SmartStitch
+        run: python -m PyInstaller --clean --noconfirm Build.spec
+      - name: Create portable ZIP
+        shell: pwsh
+        run: Compress-Archive -Path dist/SmartStitch -DestinationPath SmartStitch-Windows.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SmartStitch-Windows
+          path: SmartStitch-Windows.zip
+          if-no-files-found: error

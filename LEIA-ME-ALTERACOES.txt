@@ -1,0 +1,16 @@
+SmartStitch - corte por faixas vazias (versao experimental)
+
+Selecione o detector Smart Pixel Comparison. O programa procura faixas de pelo menos 24 pixels, brancas ou pretas, em toda a largura. Sem faixa adequada, mantem o restante junto; assim a pagina pode ficar muito maior que o tamanho desejado. Revise os cortes antes de fazer o typesetting: uma faixa uniforme nao garante que um balao ou desenho nao tenha sido dividido. As antigas opcoes de sensibilidade, margem ignorada e passo nao alteram este detector experimental. Direct Slicing continua cortando em altura fixa.
+
+COMPILAR NO WINDOWS
+Instale Python 3.10 para Windows (incluindo o launcher py). Extraia todos os arquivos para uma pasta e execute compilar-windows.bat. O processo precisa de internet para instalar dependencias. Ao terminar, abra dist\SmartStitch\SmartStitch.exe. Distribua a pasta SmartStitch inteira, nao apenas o exe. Este processo de compilacao nao foi testado no Windows.
+
+Inno Setup e opcional: ele cria o instalador a partir da pasta dist\SmartStitch. Ele nao compila por si so o programa Python em exe. Consulte INNO-SETUP.iss apos compilar.
+
+Base: https://github.com/MechTechnology/SmartStitch (licenca MIT; LICENSE incluida).
+
+INTERFACE NOVA
+Escolha o idioma (English, Portugues ou Espanol) e a aparencia (Sistema, Claro ou Escuro) no canto direito da linha de abas. O idioma inicial e ingles; uma escolha anterior continua sendo respeitada. As escolhas sao lembradas. Em Sistema, o Windows usa a preferencia de modo dos aplicativos. A interface e o aviso de paginas longas estao traduzidos; detalhes de erros de dependencias externas podem aparecer em ingles. Escolha "Faixas seguras (inteligente)" em Avancado para usar o detector testado. As antigas opcoes de sensibilidade, passo e margens foram ocultadas porque nao afetam este detector.
+
+WEBP E CORTE
+Na interface, o corte direto foi removido. Perfis antigos que usavam corte direto passam a usar faixas seguras. WebP tem limite proprio de 16383 pixels em cada dimensao. O programa mantem cada pagina WebP abaixo de 16000 pixels de altura e procura cortes seguros. Se nao houver faixa segura dentro do limite, ele corta mesmo assim e avisa ao terminar, com as posicoes que devem ser revisadas. Para evitar cortes forcados, use PNG. Para imagens largas demais, reduza a largura ou escolha PNG. No processamento de varias pastas, pastas anteriores podem ja ter sido salvas quando outra falhar.
