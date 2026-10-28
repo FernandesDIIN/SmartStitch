@@ -3,13 +3,14 @@ import os
 from PySide6.QtCore import QThread, Signal
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtUiTools import QUiLoader
-from PySide6.QtWidgets import QDialog, QFileDialog, QMessageBox
+from PySide6.QtWidgets import QDialog, QFileDialog, QMessageBox, QPushButton
 
 from assets.SmartStitchLogo import icon
 from core.services import SettingsHandler
 from core.utils.constants import OUTPUT_SUFFIX
 from gui.process import GuiStitchProcess
 from gui.appearance import Appearance
+from gui.queue_dialog import QueueDialog, LABELS
 from core.utils.errors import WebPSizeError
 
 SCRIPT_DIRECTORY = os.path.dirname(os.path.abspath(__file__))
@@ -20,16 +21,23 @@ class ProcessThread(QThread):
     postProcessConsole = Signal(str)
     webpError = Signal(str)
     forcedCuts = Signal(object)
+    queueComplete = Signal(object)
 
     def __init__(self, parent):
         super(ProcessThread, self).__init__(parent)
+        self.queue = []
+        self.input_path = ""
+        self.output_path = ""
 
     def run(self):
         process = GuiStitchProcess()
+        if self.queue:
+            self.run_queue(process)
+            return
         try:
             process.run_with_error_msgs(
-                input_path=MainWindow.inputField.text(),
-                output_path=MainWindow.outputField.text(),
+                input_path=self.input_path,
+                output_path=self.output_path,
                 status_func=self.progress.emit,
                 console_func=self.postProcessConsole.emit,
                 forced_cut_func=self.forcedCuts.emit,
@@ -39,6 +47,29 @@ class ProcessThread(QThread):
         except Exception:
             pass
 
+
+    def run_queue(self, process):
+        results, warnings = [], []
+        total = len(self.queue)
+        for index, path in enumerate(self.queue):
+            output = path + OUTPUT_SUFFIX
+            try:
+                # Never overwrite a previous batch's results without the user's knowledge.
+                if os.path.isdir(output) and os.listdir(output):
+                    raise FileExistsError('output_exists')
+                if os.path.exists(output) and not os.path.isdir(output):
+                    raise FileExistsError('output_exists')
+                def progress(percent, message, index=index):
+                    self.progress.emit(int((index + max(0, min(100, percent)) / 100) * 100 / total),
+                                       f'[{index + 1}/{total}] {os.path.basename(path)}: {message}')
+                process.run(input_path=path, output_path=output, status_func=progress,
+                            console_func=self.postProcessConsole.emit,
+                            forced_cut_func=warnings.extend)
+                results.append((path, None))
+            except Exception as error:
+                results.append((path, str(error)))
+                self.progress.emit(int((index + 1) * 100 / total), f'[{index + 1}/{total}] {os.path.basename(path)}')
+        self.queueComplete.emit({'results': results, 'warnings': warnings})
 
 
 def initialize_gui():
@@ -51,6 +82,9 @@ def initialize_gui():
     MainWindow = QUiLoader().load(os.path.join(SCRIPT_DIRECTORY, 'layout.ui'))
     settings = SettingsHandler()
     MainWindow.detectorTypeDropdown.removeItem(0)
+    MainWindow.queue_paths = []
+    MainWindow.queueButton = QPushButton()
+    MainWindow.browseGroupBox.layout().addWidget(MainWindow.queueButton)
     # Sets Window Title & Icon
     pixmap = QPixmap()
     pixmap.loadFromData(icon)
@@ -64,6 +98,9 @@ def initialize_gui():
     on_load()
     bind_signals()
     appearance = Appearance(MainWindow)
+    refresh_queue_button()
+    appearance.language_box.currentIndexChanged.connect(refresh_queue_button)
+    MainWindow.queueButton.clicked.connect(open_queue)
     MainWindow.addProfileButton.setMaximumSize(16777215, 16777215)
     MainWindow.removeProfileButton.setMaximumSize(16777215, 16777215)
     MainWindow.resize(600, 625)
@@ -74,6 +111,7 @@ def initialize_gui():
     processThread.finished.connect(process_finished)
     processThread.webpError.connect(show_webp_error)
     processThread.forcedCuts.connect(show_forced_cuts)
+    processThread.queueComplete.connect(show_queue_results)
     # Show Window
     MainWindow.show()
 
@@ -278,16 +316,57 @@ def update_postprocess_console(message: str):
     MainWindow.processConsoleField.append(message)
 
 
+def refresh_queue_button(*_):
+    MainWindow.queueButton.setText(f"{LABELS[appearance.language]['button']} ({len(MainWindow.queue_paths)})")
+
+
+def open_queue():
+    dialog = QueueDialog(MainWindow, MainWindow.queue_paths, appearance.language)
+    if dialog.exec() == QDialog.DialogCode.Accepted:
+        MainWindow.queue_paths = dialog.paths()
+        refresh_queue_button()
+
+
 def launch_process_async():
-    if not os.path.isdir(MainWindow.inputField.text()):
+    if not MainWindow.queue_paths and not os.path.isdir(MainWindow.inputField.text()):
         QMessageBox.information(MainWindow, "SmartStitch", appearance.tr(39))
         return
     if processThread.isRunning():
         return
+    processThread.queue = list(MainWindow.queue_paths)
+    processThread.input_path = MainWindow.inputField.text()
+    processThread.output_path = MainWindow.outputField.text()
     MainWindow._processing = True
     MainWindow.startProcessButton.setEnabled(False)
+    MainWindow.mainTabWidget.setEnabled(False)
     MainWindow.processConsoleField.clear()
     processThread.start()
+
+
+def show_queue_results(payload):
+    results, warnings = payload['results'], payload['warnings']
+    language = appearance.language
+    labels = {
+      'pt': ('Fila concluída', 'Concluídas', 'Falharam ou foram ignoradas', 'A pasta de saída já existe e não está vazia; mova ou renomeie os resultados anteriores.', 'Cortes forçados para respeitar o limite WebP; revise as posições'),
+      'en': ('Queue finished', 'Completed', 'Failed or skipped', 'The output folder already exists and is not empty; move or rename previous results.', 'Forced cuts to respect the WebP limit; review these positions'),
+      'es': ('Cola terminada', 'Completadas', 'Fallidas u omitidas', 'La carpeta de salida ya existe y no está vacía; mueve o renombra los resultados anteriores.', 'Cortes forzados por el límite WebP; revisa estas posiciones'),
+    }[language]
+    failures = [(path, error) for path, error in results if error]
+    success = len(results) - len(failures)
+    lines = [f'{labels[1]}: {success}/{len(results)}']
+    if failures:
+        lines.append(f'\n{labels[2]}:')
+        for path, error in failures:
+            lines.append(f'• {path}: {labels[3] if error == "output_exists" else error}')
+    if warnings:
+        lines.append(f'\n{labels[4]}:')
+        for path, cuts in warnings:
+            lines.append(f'• {path}: ' + ', '.join(str(cut) + ' px' for cut in cuts))
+    message = '\n'.join(lines)
+    MainWindow.statusField.setText(f'{labels[0]} — {labels[1]}: {success}/{len(results)}')
+    MainWindow.statusField.setToolTip(message)
+    if failures or warnings: QMessageBox.warning(MainWindow, labels[0], message)
+    else: QMessageBox.information(MainWindow, labels[0], message)
 
 
 def show_forced_cuts(report):
@@ -327,6 +406,7 @@ def show_webp_error(reason):
 def process_finished():
     MainWindow._processing = False
     MainWindow.startProcessButton.setEnabled(True)
+    MainWindow.mainTabWidget.setEnabled(True)
 
 
 def translate_status(message):

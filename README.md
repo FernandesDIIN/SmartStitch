@@ -7,9 +7,14 @@ SmartStitch combines webtoon, manhwa and manhua images and splits them into page
 - Interface in English, Portuguese and Spanish, with system, light and dark themes.
 - Safe-band detection to reduce cuts through lettering, balloons and artwork.
 - WebP pages are kept below 16,000 pixels high. If no safe band exists within that limit, SmartStitch makes a cut and warns you to review it.
-- PNG, WebP, JPEG, PSD and other output formats; batch processing and profiles.
+- PNG, WebP, JPEG, PSD and other output formats; profiles and a folder queue.
+- Select several chapter folders at once or add them individually. Each folder is processed separately, in sequence.
 
 A uniform band cannot guarantee that every balloon or drawing remains intact. Review the generated pages, especially when a forced-cut warning appears. WebP also has a maximum **width** of 16,383 pixels; choose a smaller width or a different format if needed.
+
+## Folder queue
+
+Open **Folder queue** and add folders individually, or select multiple immediate subfolders of a parent folder. Start processing to handle the queue in order, using the same settings for each folder. Results are saved beside each input as `folder [stitched]`. A non-empty queue takes priority over the main input field; clear it to return to single-folder processing. To protect existing output, a queued folder is skipped if its output folder is not empty. At the end, a summary lists successes, failures and any forced WebP cuts.
 
 ## Download for Windows
 
